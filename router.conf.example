@@ -1,0 +1,10 @@
+wan_if=eth1
+lan_if=eth0
+wlan_if=eth2
+
+lan_ip=192.168.1.1
+lan_netmask=255.255.255.0
+
+dhcp_server_lower_address=192.168.1.100
+dhcp_server_upper_address=192.168.1.250
+

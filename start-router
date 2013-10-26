@@ -1,0 +1,216 @@
+#!/bin/bash
+
+#
+# Required debian packages
+#
+# wide-dhcpv6-client (dhcp6c)
+# radvd
+# iptables
+# udhcpd
+# iproute (ip)
+# net-tools (route)
+
+set -e
+set -x
+
+function reset_networking ()
+{
+	dhclient -x
+	# TODO maybe release lease
+
+	if ! killall udhcpd; then
+		true; # nothing
+	fi
+
+	if ! killall wpa_supplicant; then
+		true; # nothing
+	fi
+
+	if ! killall dhclient; then
+		true; # nothing
+	fi
+
+	if ! killall -9 dhcp6c; then
+		true; # nothing
+	fi
+
+	while pgrep dhcp6c; do
+		echo "Waiting for dhcp6c to die..."
+		sleep 1
+	done
+
+	if ! killall radvd; then
+		true; # nothing
+	fi
+
+	ifconfig $wan_if down
+	ip addr flush dev $wan_if
+
+	ifconfig $lan_if down
+	ip addr flush dev $lan_if
+
+	ifconfig $wlan_if down
+	ip addr flush dev $wlan_if
+
+	both_iptables -F INPUT
+	both_iptables -F FORWARD
+	both_iptables -F OUTPUT
+	iptables -t nat -F POSTROUTING
+
+	# Disable ipv4 forwarding
+	echo 0 >/proc/sys/net/ipv4/ip_forward
+
+	# Disable ipv6 forwarding
+	echo 0 >/proc/sys/net/ipv6/conf/all/forwarding
+
+	# Restore ipv6 default ra accept behavior
+	echo 1 >/proc/sys/net/ipv6/conf/$wan_if/accept_ra
+}
+
+function both_iptables ()
+{
+	iptables $@
+	ip6tables $@
+}
+
+function wait_for_ip6_addr ()
+{
+	if=$1
+
+	while [ "$(ip -6 addr show dev $if scope global | wc -l)" = "0" ]; do
+		echo "Waiting for ip6 address on $if..."
+		sleep 1
+	done
+}
+
+SCRIPTDIR=$(dirname $0)
+
+source $SCRIPTDIR/router.conf
+
+reset_networking
+
+
+# FIREWALL
+### Setup the firewall before we bring up anything
+
+# Accept all related traffic
+both_iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# LAN services
+both_iptables -A INPUT -p tcp -i $lan_if --dport ssh -j ACCEPT
+iptables -A INPUT -p udp -i $lan_if --dport bootps -j ACCEPT
+ip6tables -A INPUT -p udp -i $lan_if --dport dhcpv6-client -j ACCEPT
+ip6tables -A INPUT -p udp -i $lan_if --dport 5353 -j ACCEPT
+
+# Somehow the conntrack won't recognize inbound dhcpv6 replies as related to
+# the request. May have something to do with requests being sent to multicast
+# address, but replies being received from unicast
+ip6tables -A INPUT -p udp --dport dhcpv6-client -j ACCEPT
+ip6tables -A INPUT -p icmpv6 -j ACCEPT
+
+# Drop everything else
+both_iptables -A INPUT -j DROP
+
+
+# ROUTING
+
+# IPv6: Accept only established forwarding from wan
+ip6tables -A FORWARD -m conntrack -i $wan_if --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Forward traffic that 
+ip6tables -A FORWARD -i $wlan_if -j ACCEPT
+ip6tables -A FORWARD -i $lan_if -j ACCEPT
+
+# Drop everything else
+ip6tables -A FORWARD -j DROP
+
+
+# BRING UP INTERFACES
+
+# Bring up wan/ipv4 - use dhcp
+# We don't want too much stuff here. We skip DNS as we won't use the isp's DNS.
+echo "request routers, subnet-mask, broadcast-address, time-offset,
+	interface-mtu, ntp-servers;" >/tmp/dhclient-${wan_if}.conf
+dhclient -cf /tmp/dhclient-${wan_if}.conf $wan_if
+
+# Bring up lan
+ifconfig $lan_if up $lan_ip netmask $lan_netmask
+
+# Bring up wan/ipv6 - use dhcp
+
+# Before doing anything else, setup the wan interface to accept RA's even
+# though it will be in router mode. This has to be done before the interface
+# comes up, otherwise a manual router discovery packet would have to be sent to
+# force the kernel to refresh the routers.
+echo 2 >/proc/sys/net/ipv6/conf/$wan_if/accept_ra
+
+# We ask both for a prefix delegation (ia-pd) which we'll use for the lan and
+# an address for the wan (ia-na). I haven't found a way of obtaining a router
+# from dhcpv6, so the default router is set later. Also, my isp doesn't seem to
+# provide a DNS server over dhcpv6. But we want to use the google dns server
+# anyway.
+echo "interface $wan_if {
+     send ia-pd 0;
+     send ia-na 0;
+};
+
+id-assoc na 0 {};
+
+id-assoc pd {
+     prefix-interface $lan_if {
+	     sla-id 1;
+             sla-len 0;
+     };
+};" >/tmp/dhcp6c.conf
+dhcp6c -c /tmp/dhcp6c.conf $wan_if
+
+# Setup static nameservers - Google public DNS
+echo "nameserver 8.8.8.8
+nameserver 8.8.4.4
+nameserver 2001:4860:4860::8888
+nameserver 2001:4860:4860::8844" >/etc/resolv.conf
+
+# Setup IPv4 routing
+iptables -A POSTROUTING -t nat -o $wan_if -j MASQUERADE
+echo 1 >/proc/sys/net/ipv4/ip_forward
+
+# Setup IPv6 routing
+echo 1 >/proc/sys/net/ipv6/conf/all/forwarding
+
+
+# START SERVICES
+
+# DHCP server
+echo "start $dhcp_server_lower_address
+end $dhcp_server_upper_address
+interface $lan_if
+option dns 8.8.8.8
+option router $lan_ip" >/tmp/udhcpd.conf
+udhcpd /tmp/udhcpd.conf
+
+
+# Router advertizement
+# This lets other computers on the lan know about the prefix we've been
+# delegated so that they can statically autoconfigure their ipv6 interface.
+# Typically, they will take two addresses with this prefix. One based on their
+# mac address and another determined randomly.
+#
+# The special prefix ::/64 will automatically pickup the prefixes of the
+# configured addresses on that interface.
+#
+# We need to wait for the wan's dhcpv6 address to be set up, otherwise radvd
+# won't advertize.
+wait_for_ip6_addr $wan_if
+
+echo "interface $lan_if {
+	AdvSendAdvert on;
+	prefix ::/64
+	{
+		AdvOnLink on;
+		AdvAutonomous on;
+	};
+	RDNSS 2001:4860:4860::8888 2001:4860:4860::8844
+	{
+	};
+};" >/tmp/radvd.conf
+radvd -C /tmp/radvd.conf
