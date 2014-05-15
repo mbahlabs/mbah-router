@@ -66,3 +66,8 @@ class RouterContext:
 		full_path = os.path.join(module_dir, file)
 
 		return open(full_path, mode)
+
+	def get_module_static_dir(self, module):
+		static_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "module_static", module)
+		mkdir_p(static_dir)
+		return static_dir

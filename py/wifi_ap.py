@@ -53,6 +53,8 @@ wpa_passphrase={wifi_ap_passphrase}
 wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP
 rsn_pairwise=CCMP
+ieee80211n=1
+ht_capab=[HT40-][SHORT-GI-40][DSSS_CCK-40]
 """
 
 class WifiAP(router_module.RouterModule):

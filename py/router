@@ -14,6 +14,7 @@ import config_file_out
 import dhcp_client
 import wifi_ap
 import pinger
+import web
 
 def iptables(ctx, s):
 	process.shell_command(ctx, "iptables " + s)
@@ -76,7 +77,6 @@ def setup_forwarding(ctx):
 			cmd = "iptables -t nat -A PREROUTING -i {wan_if} -p {type} --dport {port} -j DNAT --to {ip}".format(**{"wan_if" : conf['wan_if'], "type" : f['type'], "port" : f['port'], "ip" : h['ip'] })
 			process.shell_command(ctx, cmd)
 
-
 def main():
 	ctx = router_context.RouterContext()
 
@@ -100,6 +100,9 @@ def main():
 	iptables(ctx, "-A INPUT -p udp --dport 53 -j ACCEPT")
 	ip6tables(ctx, "-A INPUT -p udp -i {lan_if} --dport dhcpv6-client -j ACCEPT".format(**conf))
 	ip6tables(ctx, "-A INPUT -p udp -i {lan_if} --dport 5353 -j ACCEPT".format(**conf))
+
+	# FIXME: beaglebone debugging via usb
+	both_iptables(ctx, "-A INPUT -i usb0 -j ACCEPT")
 
 	# Somehow the conntrack won't recognize inbound dhcpv6 replies as related to
 	# the request. May have something to do with requests being sent to multicast
@@ -195,6 +198,9 @@ def main():
 
 	pinger_module = pinger.Pinger(ctx)
 	ctx.add_module(pinger_module)
+
+	web_server = web.Web(ctx)
+	ctx.add_module(web_server)
 
 	main_loop(ctx)
 

@@ -3,6 +3,8 @@ import process
 import config
 import router_module
 import subprocess
+import timeout
+import time
 
 class Dhcp6Client(router_module.RouterModule):
 	def __init__(self, ctx):
@@ -31,7 +33,29 @@ class Dhcp6Client(router_module.RouterModule):
 	def brutal_stop(self):
 		process.shell_command(self.get_context(), "killall dhcp6c", ignoreResult=True)
 
+	def is_interface_up(self, iface):
+		if process.shell_command(self.get_context(), "ip addr show dev eth0 | grep ,UP,", ignoreResult=True)['returncode'] == 0:
+			return True
+		else:
+			return False
+
+
 	def start(self):
 		conf = config.Config.get_config()
-		self.dhcpd_process = process.Process(self.get_context(), "dhcp6c", "dhcp6c -c {} {}".format(self.config_file.get_location(), conf["wan_if"]))
+
+		# First, need to wait for the interface to be up
+		t = timeout.Timeout(10)
+
+		while True:
+			if self.is_interface_up(conf["wan_if"]):
+				break
+
+			if t.is_expired():
+				raise RuntimeError("Timed out waiting for interface to come up")
+
+			print "Waiting for interface to come up..."
+			time.sleep(1)
+
+		conf = config.Config.get_config()
+		self.dhcpd_process = process.Process(self.get_context(), "dhcp6c", "dhcp6c -f -c {} {}".format(self.config_file.get_location(), conf["wan_if"]))
 		self.dhcpd_process.start()
