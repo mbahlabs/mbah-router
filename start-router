@@ -197,6 +197,7 @@ echo "start $dhcp_server_lower_address
 end $dhcp_server_upper_address
 interface $lan_if
 option dns 8.8.8.8
+option subnet 255.255.255.0
 option router $lan_ip" >/tmp/udhcpd.conf
 udhcpd /tmp/udhcpd.conf
 
