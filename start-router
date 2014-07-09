@@ -102,6 +102,9 @@ reset_networking
 # FIREWALL
 ### Setup the firewall before we bring up anything
 
+# Allow local traffic
+both_iptables -A INPUT -i lo -j ACCEPT
+
 # Accept all related traffic
 both_iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
