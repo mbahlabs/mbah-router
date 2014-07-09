@@ -213,17 +213,19 @@ udhcpd /tmp/udhcpd.conf
 #
 # We need to wait for the wan's dhcpv6 address to be set up, otherwise radvd
 # won't advertize.
-wait_for_ip6_addr $wan_if
-
-echo "interface $lan_if {
-	AdvSendAdvert on;
-	prefix ::/64
-	{
-		AdvOnLink on;
-		AdvAutonomous on;
-	};
-	RDNSS 2001:4860:4860::8888 2001:4860:4860::8844
-	{
-	};
-};" >/tmp/radvd.conf
-radvd -C /tmp/radvd.conf
+if wait_for_ip6_addr $wan_if; then
+	echo "interface $lan_if {
+		AdvSendAdvert on;
+		prefix ::/64
+		{
+			AdvOnLink on;
+			AdvAutonomous on;
+		};
+		RDNSS 2001:4860:4860::8888 2001:4860:4860::8844
+		{
+		};
+	};" >/tmp/radvd.conf
+	radvd -C /tmp/radvd.conf
+else
+	echo "Couldn't get an ipv6 address" >/dev/stderr
+fi
