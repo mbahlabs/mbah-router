@@ -9,6 +9,7 @@
 # udhcpd
 # iproute (ip)
 # net-tools (route)
+# ndisc6 (rdisc6)
 
 set -e
 set -x
@@ -40,6 +41,10 @@ function reset_networking ()
 	done
 
 	if ! killall radvd; then
+		true; # nothing
+	fi
+
+	if ! killall rdiscd; then
 		true; # nothing
 	fi
 
@@ -229,3 +234,13 @@ if wait_for_ip6_addr $wan_if; then
 else
 	echo "Couldn't get an ipv6 address" >/dev/stderr
 fi
+
+
+# RDISCD
+# My cable company (Time Warner cable) does not send unsolicited router
+# advertisements.  Therefore, after the initial lifetime of the advertisement
+# which is received when the interface comes up, the default route expires and
+# ipv6 communications become impossible. Therefore, we start a custom daemon to
+# periodically send solicitations.
+
+$SCRIPTDIR/rdiscd $wan_if 60 &

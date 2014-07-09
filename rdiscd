@@ -1,0 +1,9 @@
+#!/bin/bash
+
+iface=$1
+interval=$2
+
+while [ 0 ]; do
+	rdisc6 "$iface" >/dev/null
+	sleep "$interval"
+done
