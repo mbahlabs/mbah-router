@@ -77,10 +77,19 @@ function wait_for_ip6_addr ()
 {
 	if=$1
 
+	seconds=0
 	while [ "$(ip -6 addr show dev $if scope global | wc -l)" = "0" ]; do
+		if [ "$seconds" -gt 10 ]; then
+			# timed out
+			return 1
+		fi
 		echo "Waiting for ip6 address on $if..."
 		sleep 1
+		seconds=$(($seconds+1))
+
 	done
+
+	return 0
 }
 
 SCRIPTDIR=$(dirname $0)
