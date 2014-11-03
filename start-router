@@ -18,6 +18,8 @@ set -x
 
 export PATH=$PATH:/sbin
 
+SCRIPTDIR=$(dirname $0)
+
 function ok_fail ()
 {
 	if ! $@; then
@@ -30,7 +32,7 @@ function reset_networking ()
 	dhclient -x
 	# TODO maybe release lease
 
-	if ! killall udhcpd; then
+	if ! killall dhcpd; then
 		true; # nothing
 	fi
 
@@ -173,7 +175,38 @@ rsn_pairwise=CCMP
 	hostapd -B /tmp/hostapd.conf
 }
 
-SCRIPTDIR=$(dirname $0)
+function start_dhcp_server () {
+	echo "
+subnet 192.168.1.0 netmask 255.255.255.0 {
+	option routers                  192.168.1.1;
+	option subnet-mask              255.255.255.0;
+
+#	option domain-name              "example.com";
+	option domain-name-servers       8.8.8.8, 8.8.4.4;
+
+#	option time-offset              -18000;     # Eastern Standard Time
+
+	range 192.168.1.100 192.168.1.200;
+
+" >/tmp/dhcpd.conf
+
+	grep -v '^#' $SCRIPTDIR/static_dhcp.conf | while read line; do
+
+		IFS=',' read -ra FIELDS <<< "$line"
+		host=${FIELDS[0]}
+		eth=${FIELDS[1]}
+		ip=${FIELDS[2]}
+		echo -e "\thost $host {
+		hardware ethernet $eth
+		fixed-address $ip
+	}" >>/tmp/dhcpd.conf
+	done
+
+	echo "}" >>/tmp/dhcpd.conf
+
+	dhcpd -cf /tmp/dhcpd.conf $an_if
+}
+
 
 source $SCRIPTDIR/router.conf
 
@@ -285,15 +318,7 @@ echo 1 >/proc/sys/net/ipv6/conf/all/forwarding
 
 # START SERVICES
 
-# DHCP server
-echo "start $dhcp_server_lower_address
-end $dhcp_server_upper_address
-interface $lan_if
-option dns 8.8.8.8
-option subnet 255.255.255.0
-option router $lan_ip" >/tmp/udhcpd.conf
-udhcpd /tmp/udhcpd.conf
-
+start_dhcp_server
 
 # Router advertizement
 # This lets other computers on the lan know about the prefix we've been
