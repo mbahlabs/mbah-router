@@ -197,8 +197,8 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 		eth=${FIELDS[1]}
 		ip=${FIELDS[2]}
 		echo -e "\thost $host {
-		hardware ethernet $eth
-		fixed-address $ip
+		hardware ethernet $eth;
+		fixed-address $ip;
 	}" >>/tmp/dhcpd.conf
 	done
 
