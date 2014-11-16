@@ -1,0 +1,205 @@
+#!/usr/bin/python
+
+import process
+import router_context
+import dhcp_server
+import os
+import config
+import rdiscd
+import subprocess
+import time
+import radvd
+import dhcp6_client
+import config_file_out
+import dhcp_client
+import wifi_ap
+import pinger
+
+def iptables(ctx, s):
+	process.shell_command(ctx, "iptables " + s)
+
+def ip6tables(ctx, s):
+	process.shell_command(ctx, "ip6tables " + s)
+
+def both_iptables(ctx, s):
+	iptables(ctx, s)
+	ip6tables(ctx, s)
+
+def wait_for_ip6_addr():
+	now = time.time()
+
+	while 1:
+		p = subprocess.Popen("ip -6 addr show dev $if scope global | wc -l",
+			shell=True,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE)
+		(stdout, stderr) = p.communicate()
+
+		if p.returncode != 0:
+			raise RuntimeError("failed to determine if we have an ipv6 address")
+
+		if stdout != "0":
+			return True
+
+		if time.time() > now + 10:
+			return False
+
+		time.sleep(1)
+
+def set_nameservers(ctx):
+	conf = config.Config.get_config()
+	config_file = config_file_out.ConfigFileOut(ctx, "resolv.conf")
+	for h in conf['dns']:
+		config_file.append("nameserver {}\n".format(h))
+
+def reset_iptables(ctx):
+	both_iptables(ctx, "-P INPUT DROP")
+	ip6tables(ctx, "-P FORWARD DROP") # FIXME
+	# We don't set the policy for the output chain because these packets originate locally
+
+	both_iptables(ctx, "-F INPUT")
+	both_iptables(ctx, "-F OUTPUT")
+	both_iptables(ctx, "-F FORWARD")
+
+	both_iptables(ctx, "-t nat -F PREROUTING")
+	both_iptables(ctx, "-t nat -F POSTROUTING")
+	both_iptables(ctx, "-t nat -F INPUT")
+	both_iptables(ctx, "-t nat -F OUTPUT")
+
+def setup_forwarding(ctx):
+	conf = config.Config.get_config()
+
+	for h in conf['static_hosts']:
+		if not h.has_key('port_forward'):
+			continue
+		for f in h['port_forward']:
+			cmd = "iptables -t nat -A PREROUTING -i {wan_if} -p {type} --dport {port} -j DNAT --to {ip}".format(**{"wan_if" : conf['wan_if'], "type" : f['type'], "port" : f['port'], "ip" : h['ip'] })
+			process.shell_command(ctx, cmd)
+
+
+def main():
+	ctx = router_context.RouterContext()
+
+	conf = config.Config.get_config()
+
+	process.shell_command(ctx, 'ifconfig {wan_if} down'.format(**conf))
+	process.shell_command(ctx, 'ifconfig {lan_if} down'.format(**conf), ignoreResult=True)
+	process.shell_command(ctx, 'brctl delbr {lan_if}'.format(**conf), ignoreResult=True)
+	reset_iptables(ctx)
+
+	# Allow local traffic
+	both_iptables(ctx, "-A INPUT -i lo -j ACCEPT")
+
+	# Accept all related traffic
+	both_iptables(ctx, "-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT")
+
+	# LAN services
+	both_iptables(ctx, "-A INPUT -p tcp -i {lan_if} --dport ssh -j ACCEPT".format(**conf))
+	both_iptables(ctx, "-A INPUT -p tcp -i {lan_if} --dport 8000 -j ACCEPT".format(**conf)) #routerpy
+	iptables(ctx, "-A INPUT -p udp -i {lan_if} --dport bootps -j ACCEPT".format(**conf))
+	iptables(ctx, "-A INPUT -p udp --dport 53 -j ACCEPT")
+	ip6tables(ctx, "-A INPUT -p udp -i {lan_if} --dport dhcpv6-client -j ACCEPT".format(**conf))
+	ip6tables(ctx, "-A INPUT -p udp -i {lan_if} --dport 5353 -j ACCEPT".format(**conf))
+
+	# Somehow the conntrack won't recognize inbound dhcpv6 replies as related to
+	# the request. May have something to do with requests being sent to multicast
+	# address, but replies being received from unicast
+	ip6tables(ctx, "-A INPUT -p udp --dport dhcpv6-client -j ACCEPT")
+	ip6tables(ctx, "-A INPUT -p icmpv6 -j ACCEPT")
+
+	# Drop everything else
+	both_iptables(ctx, "-A INPUT -j DROP")
+
+
+	# ROUTING
+
+	# IPv6: Accept only established forwarding from wan
+	ip6tables(ctx, "-A FORWARD -m conntrack -i {wan_if} --ctstate ESTABLISHED,RELATED -j ACCEPT".format(**conf))
+
+	# Forward traffic that 
+	#???ip6tables(ctx, "-A FORWARD -i {wlan_if} -j ACCEPT".format(**conf))
+	ip6tables(ctx, "-A FORWARD -i {lan_if} -j ACCEPT".format(**conf))
+
+	# Drop everything else
+	ip6tables(ctx, "-A FORWARD -j DROP")
+
+	# Start access point
+	wifi_ap_module = wifi_ap.WifiAP(ctx)
+	ctx.add_module(wifi_ap_module)
+
+	# Start lan bridge
+	process.shell_command(ctx, 'brctl addbr {lan_if}'.format(**conf))
+	##### We can only add the wifi interface after the AP has been configured
+	process.shell_command(ctx, 'brctl addif {lan_if} {wifi_ap_if}'.format(**conf), retries=500)
+	process.shell_command(ctx, 'brctl addif {lan_if} {wired_lan_if}'.format(**conf))
+
+	# Bring up wan interface - dhcp6c doesn't work if interface is down
+	process.shell_command(ctx, 'ifconfig {wan_if} up'.format(**conf))
+
+	# Bring up wan/ipv4 - use dhcp
+	# We don't want too much stuff here. We skip DNS as we won't use the isp's DNS.
+	dhcp_client_module = dhcp_client.DhcpClient(ctx)
+	ctx.add_module(dhcp_client_module)
+
+	process.shell_command(ctx, 'ifconfig {wifi_ap_if} up'.format(**conf))
+	process.shell_command(ctx, 'ifconfig {wired_lan_if} up'.format(**conf))
+	process.shell_command(ctx, 'ifconfig {lan_if} up {lan_ip} netmask {lan_netmask}'.format(**conf))
+
+	# Before doing anything else, setup the wan interface to accept RA's even
+	# though it will be in router mode. This has to be done before the interface
+	# comes up, otherwise a manual router discovery packet would have to be sent to
+	# force the kernel to refresh the routers.
+	process.shell_command(ctx, 'echo 2 >/proc/sys/net/ipv6/conf/{}/accept_ra'.format(conf['wan_if']))
+
+	# We ask both for a prefix delegation (ia-pd) which we'll use for the lan and
+	# an address for the wan (ia-na). I haven't found a way of obtaining a router
+	# from dhcpv6, so the default router is set later. Also, my isp doesn't seem to
+	# provide a DNS server over dhcpv6. But we want to use the google dns server
+	# anyway.
+	dhcp6c_module = dhcp6_client.Dhcp6Client(ctx)
+	ctx.add_module(dhcp6c_module)
+
+
+	# Set nameservers
+	set_nameservers(ctx)
+
+	# Enable IPv4 masquerading
+	process.shell_command(ctx, 'iptables -A POSTROUTING -t nat -o {} -j MASQUERADE'.format(conf['wan_if']))
+
+	# Enable IPv4 routing
+	process.shell_command(ctx, 'echo 1 >/proc/sys/net/ipv4/ip_forward')
+
+	# Enable IPv6 routing
+	process.shell_command(ctx, 'echo 1 >/proc/sys/net/ipv6/conf/all/forwarding')
+
+	if wait_for_ip6_addr() == True:
+		# We have an ipv6 address; set up the associated services
+		radv = radvd.Radvd(ctx)
+		ctx.add_module(radv)
+
+	# DHCP server
+	dhcpd = dhcp_server.DhcpServer(ctx)
+	ctx.add_module(dhcpd)
+
+	# RDISCD
+	# My cable company (Time Warner cable) does not send unsolicited router
+	# advertisements.  Therefore, after the initial lifetime of the advertisement
+	# which is received when the interface comes up, the default route expires and
+	# ipv6 communications become impossible. Therefore, we start a custom daemon to
+	# periodically send solicitations.
+
+	rdisc = rdiscd.Rdiscd(ctx)
+	ctx.add_module(rdisc)
+
+	setup_forwarding(ctx)
+
+	pinger_module = pinger.Pinger(ctx)
+	ctx.add_module(pinger_module)
+
+	main_loop(ctx)
+
+def main_loop(ctx):
+	while True:
+		time.sleep(1000)
+
+main()
