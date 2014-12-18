@@ -56,6 +56,24 @@ class Dhcp6Client(router_module.RouterModule):
 			print "Waiting for interface to come up..."
 			time.sleep(1)
 
+		# dhcp6c is tough; it won't come up unless the previous
+		# instance that was running on the interface is completely gone
+		# It can easily take 20 seconds for it to die
+
+		t = timeout.Timeout(60)
+		while True:
+			if process.shell_command(self.get_context(), "pgrep -f '^dhcp6c .* {}'".format(conf["wan_if"]), ignoreResult=True)['returncode'] == 1:
+				# Failed to find an instance, we're done
+				break
+
+			if t.is_expired():
+				raise RuntimeError("Timed out waiting for dhcp6c to die")
+
+			print "Waiting for dhcp6c to die..."
+			time.sleep(1)
+
+
+
 		conf = config.Config.get_config()
 		self.dhcpd_process = process.Process(self.get_context(), self, "dhcp6c", "dhcp6c -f -c {} {}".format(self.config_file.get_location(), conf["wan_if"]))
 		self.dhcpd_process.start()
