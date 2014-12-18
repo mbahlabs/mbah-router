@@ -45,16 +45,26 @@ def shell_command(ctx, cmd, **args):
 
 	return retval
 
+def killall_and_wait(name):
+	process.shell_command(self.get_context(), "killall {}".format(name), ignoreResult=True)
+	while True:
+		pgrep_res = process.shell_command(self.get_context(), "pgrep {}".format(name), ignoreResult=True)
+		if len(pgrep_res['stdout']) == 0:
+			break
+		time.sleep(1)
+
 class Process:
-	def __init__(self, ctx, name, args):
+	def __init__(self, ctx, module, name, args):
 		self.ctx = ctx
-		self.name = name
+		self._name = name
 		self.args = args
+		self.module = module
+		self.process = None
 
 	def start(self):
 		log_dir = self.ctx.get_log_dir()
-		stdout_file = os.path.join(log_dir, "{0}.stdout".format(self.name))
-		stderr_file = os.path.join(log_dir, "{0}.stderr".format(self.name))
+		stdout_file = os.path.join(log_dir, "{0}.stdout".format(self._name))
+		stderr_file = os.path.join(log_dir, "{0}.stderr".format(self._name))
 
 		stdout_hnd = open(stdout_file, "w")
 		stderr_hnd = open(stderr_file, "w")
@@ -64,5 +74,16 @@ class Process:
 		self.process = subprocess.Popen(self.args, shell=True,
 			stdin=None, stdout=stdout_hnd, stderr=stderr_hnd, close_fds=True)
 
+		self.module.register_process(self)
+
 	def stop(self):
 		self.process.terminate()
+
+	def is_alive(self):
+		if self.process.poll() is None:
+			return True
+		else:
+			return False
+
+	def name(self):
+		return self._name

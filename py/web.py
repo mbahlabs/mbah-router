@@ -55,6 +55,7 @@ class Web(router_module.RouterModule):
 
 		apache2_process = process.Process(
 				self.get_context(),
+				self,
 				"apache2",
 				"APACHE_BIND_ADDRESS={0} {1}".format(
 					conf['lan_ip'],

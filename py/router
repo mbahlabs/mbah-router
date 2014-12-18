@@ -206,6 +206,7 @@ def main():
 
 def main_loop(ctx):
 	while True:
-		time.sleep(1000)
+		ctx.check_health()
+		time.sleep(10)
 
 main()

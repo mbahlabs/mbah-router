@@ -71,3 +71,7 @@ class RouterContext:
 		static_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "module_static", module)
 		mkdir_p(static_dir)
 		return static_dir
+
+	def check_health(self):
+		for m in self.modules:
+			m.check_health()

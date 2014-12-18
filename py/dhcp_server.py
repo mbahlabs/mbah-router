@@ -42,5 +42,5 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 
 	def start(self):
 		conf = config.Config.get_config()
-		self.dhcpd_process = process.Process(self.get_context(), "dhcpd", "dhcpd -f -cf {1} {0}".format(conf["lan_if"], self.config_file.get_location()))
+		self.dhcpd_process = process.Process(self.get_context(), self, "dhcpd", "dhcpd -f -cf {1} {0}".format(conf["lan_if"], self.config_file.get_location()))
 		self.dhcpd_process.start()

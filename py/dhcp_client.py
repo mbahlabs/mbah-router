@@ -23,5 +23,5 @@ class DhcpClient(router_module.RouterModule):
 
 	def start(self):
 		conf = config.Config.get_config()
-		self.process = process.Process(self.get_context(), "dhclient", "dhclient -cf {} {}".format(self.config_file.get_location(), conf["wan_if"]))
+		self.process = process.Process(self.get_context(), self, "dhclient", "dhclient -d -cf {} {}".format(self.config_file.get_location(), conf["wan_if"]))
 		self.process.start()

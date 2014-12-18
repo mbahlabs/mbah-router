@@ -21,8 +21,9 @@ class Rdiscd(router_module.RouterModule):
 
 		rdiscd = process.Process(
 				self.get_context(),
+				self,
 				"rdiscd",
-				"{0} {1} 60 &".format(
+				"{0} {1} 60".format(
 					rdiscd_path,
 					conf.get("wan_if")))
 		rdiscd.start()

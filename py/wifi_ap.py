@@ -74,5 +74,5 @@ class WifiAP(router_module.RouterModule):
 	def start(self):
 
 		conf = config.Config.get_config()
-		self.process = process.Process(self.get_context(), "hostapd", "hostapd -B {}".format(self.config_file.get_location()))
+		self.process = process.Process(self.get_context(), self, "hostapd", "hostapd {}".format(self.config_file.get_location()))
 		self.process.start()

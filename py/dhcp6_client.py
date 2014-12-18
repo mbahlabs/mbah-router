@@ -57,5 +57,5 @@ class Dhcp6Client(router_module.RouterModule):
 			time.sleep(1)
 
 		conf = config.Config.get_config()
-		self.dhcpd_process = process.Process(self.get_context(), "dhcp6c", "dhcp6c -f -c {} {}".format(self.config_file.get_location(), conf["wan_if"]))
+		self.dhcpd_process = process.Process(self.get_context(), self, "dhcp6c", "dhcp6c -f -c {} {}".format(self.config_file.get_location(), conf["wan_if"]))
 		self.dhcpd_process.start()
