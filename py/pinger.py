@@ -25,18 +25,20 @@ class Pinger(router_module.RouterModule):
 			pass
 			# FIXME: need to remember the child's pid
 
-	def ping_loss_test(self, target, iface, count, interv):
+	def ping_loss_test(self, target, count, interv):
 		ping_result = process.shell_command(self.ctx,
-			"ping -n -q -i {} -c {} -I {} {}".format(interv, count, iface, target), ignoreResult=True)
+			"ping -n -q -i {} -c {} {}".format(interv, count, target), ignoreResult=True)
 
 		if ping_result['returncode'] != 0:
+			self.ctx.log("ping returned code {0} stderr {1}".format(ping_result['returncode'], ping_result['stderr']))
 			return None
 
 		grep_result = process.shell_command(self.ctx,
 			"egrep -o '[0-9]{1,3}% packet loss' | cut -d '%' -f 1", input=ping_result["stdout"]+"\x04")
 
 		if grep_result['returncode'] != 0:
-			raise RuntimeError("grep filter failed, shouldn't happen")
+			self.ctx.log("grep returned code {0} with stderr {1}".format(grep_result['returncode'], grep_result['stderr']))
+			return None
 
 		return int(grep_result['stdout'].rstrip())
 
@@ -44,7 +46,7 @@ class Pinger(router_module.RouterModule):
 		f = self.ctx.open_persistent_file("pinger", "ping.csv", "a")
 
 		while True:
-			result = self.ping_loss_test("www.google.com", "eth1", 10, 0.2)
+			result = self.ping_loss_test("www.google.com", 10, 0.2)
 			time.sleep(15)
 
 			f.write("{},{},{},{}\n".format(

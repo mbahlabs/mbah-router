@@ -31,6 +31,8 @@ def shell_command(ctx, cmd, **args):
 
 			# Otherwise deal with the error
 			if not args.has_key('ignoreResult') or args['ignoreResult'] == False:
+				ctx.log("command failed with code '{}'".format(proc.returncode))
+				ctx.log("stderr is: {}".format(stderr))
 				raise RuntimeError("Failed to execute command {0} (return code {1})".format(cmd, proc.returncode))
 			else:
 				break
