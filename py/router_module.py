@@ -22,8 +22,7 @@ class RouterModule:
 		for p in self.processes:
 			if not p.is_alive():
 				self.ctx.log("Process {} has unexpectedly died; restarting".format(p.name()))
-				#self.brutal_stop()
-				# FIXME: should wait for the brutal stop to take effect
-				#self.start()
+				self.brutal_stop()
+				self.start()
 			else:
 				self.ctx.log("Process {} is still alive".format(p.name()))
