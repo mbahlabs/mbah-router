@@ -12,10 +12,12 @@ export APACHE_PID_FILE=${absolute_apache_dir}/tmp/apache.pid
 export APACHE_LOG_DIR=${absolute_apache_dir}/tmp
 export APACHE_DOC_ROOT=${absolute_apache_dir}/docs
 export APACHE_PYLIB_DIR=${absolute_apache_dir}/../pylib
-export NOTE_REPO_LOCATION=${absolute_apache_dir}/../repos
-export APACHE_PORT=80
+export APACHE_PORT=8000
 export APACHE_SSL_PORT=4430
 export APACHE_SERVER_NAME=my.name.com
+export APACHE_BIND_ADDRESS=192.168.1.1
+export APACHE_RUN_USER=www-data
+export APACHE_RUN_GROUP=www-data
 
-#/usr/sbin/apache2 -d "${absolute_apache_dir}/config" -DFOREGROUND -e info
-/usr/sbin/apache2 -d "${absolute_apache_dir}/config" -e info
+/usr/sbin/apache2 -d "${absolute_apache_dir}/config" -DFOREGROUND -e info
+#/usr/sbin/apache2 -d "${absolute_apache_dir}/config" -e info
