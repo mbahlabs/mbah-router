@@ -48,8 +48,6 @@ class LedHeartbeat(router_module.RouterModule):
 			if all_ok == False:
 				color = 1
 
-			self.get_context().log("color is {}".format(color))
-
 			self.set_led_color(0)
 			time.sleep(.100)
 			self.set_led_color(color)

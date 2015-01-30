@@ -73,7 +73,6 @@ class Pinger(router_module.RouterModule):
 
 				last_lost = int(fields[3])
 
-				ctx.log("Last lost is {}".format(last_lost))
 				return last_lost
 		except:
 			return None
