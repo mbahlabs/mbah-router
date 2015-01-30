@@ -17,6 +17,7 @@ import pinger
 import web
 import led_heartbeat
 import logging
+import watchdog
 
 def iptables(ctx, s):
 	process.shell_command(ctx, "iptables " + s)
@@ -80,6 +81,9 @@ def setup_forwarding(ctx):
 			process.shell_command(ctx, cmd)
 
 def inner_main(ctx):
+	watchdog_module = watchdog.Watchdog(ctx)
+	ctx.add_module(watchdog_module)
+
 	conf = config.Config.get_config()
 
 	process.shell_command(ctx, 'ifconfig {wan_if} down'.format(**conf))
