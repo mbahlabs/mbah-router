@@ -15,6 +15,8 @@ import dhcp_client
 import wifi_ap
 import pinger
 import web
+import led_heartbeat
+import logging
 
 def iptables(ctx, s):
 	process.shell_command(ctx, "iptables " + s)
@@ -77,9 +79,7 @@ def setup_forwarding(ctx):
 			cmd = "iptables -t nat -A PREROUTING -i {wan_if} -p {type} --dport {port} -j DNAT --to {ip}".format(**{"wan_if" : conf['wan_if'], "type" : f['type'], "port" : f['port'], "ip" : h['ip'] })
 			process.shell_command(ctx, cmd)
 
-def main():
-	ctx = router_context.RouterContext()
-
+def inner_main(ctx):
 	conf = config.Config.get_config()
 
 	process.shell_command(ctx, 'ifconfig {wan_if} down'.format(**conf))
@@ -199,6 +199,9 @@ def main():
 	pinger_module = pinger.Pinger(ctx)
 	ctx.add_module(pinger_module)
 
+	led_heartbeat_module = led_heartbeat.LedHeartbeat(ctx)
+	ctx.add_module(led_heartbeat_module)
+
 	web_server = web.Web(ctx)
 	ctx.add_module(web_server)
 
@@ -208,5 +211,18 @@ def main_loop(ctx):
 	while True:
 		ctx.check_health()
 		time.sleep(10)
+
+def main():
+	# Load the context so that the logging directory is created
+	ctx = router_context.RouterContext()
+
+	exceptions_log_file = os.path.join(ctx.get_log_dir(), "exceptions.log")
+
+	logging.basicConfig(filename=exceptions_log_file, level=logging.DEBUG)
+
+	try:
+		inner_main(ctx)
+	except:
+		logging.exception("Exc:")
 
 main()

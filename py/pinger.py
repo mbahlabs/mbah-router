@@ -55,3 +55,25 @@ class Pinger(router_module.RouterModule):
 				"10",
 				result))
 			f.flush()
+
+	@staticmethod
+	def get_last_lost(ctx):
+		try:
+			with ctx.open_persistent_file("pinger", "ping.csv", "r") as fh:
+				fh.seek(-1024, 2)
+				last = fh.readlines()[-1].decode()
+				last = last.rstrip()
+
+				fields = last.split(",")
+
+				ts = float(fields[0])
+				ts_diff = time.time() - ts
+				if ts_diff < 0 or ts_diff > 60:
+					return None
+
+				last_lost = int(fields[3])
+
+				ctx.log("Last lost is {}".format(last_lost))
+				return last_lost
+		except:
+			return None
