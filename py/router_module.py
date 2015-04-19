@@ -21,7 +21,11 @@ class RouterModule:
 	def check_health(self):
 		for p in self.processes:
 			if not p.is_alive():
+				# don't want to check it anymore
+				self.processes.remove(p)
 				self.ctx.log("Process {} has unexpectedly died; restarting".format(p.name()))
+
+				# We restart the whole module, which is a bit intense
 				self.brutal_stop()
 				self.start()
 			else:

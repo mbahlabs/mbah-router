@@ -47,12 +47,15 @@ def shell_command(ctx, cmd, **args):
 
 	return retval
 
-def killall_and_wait(name):
-	process.shell_command(self.get_context(), "killall {}".format(name), ignoreResult=True)
+def killall_and_wait(ctx, name):
+	ctx.log("killall_and_wait: killing '{}'".format(name))
+	shell_command(ctx, "killall {}".format(name), ignoreResult=True)
 	while True:
-		pgrep_res = process.shell_command(self.get_context(), "pgrep {}".format(name), ignoreResult=True)
+		pgrep_res = shell_command(ctx, "pgrep {}".format(name), ignoreResult=True)
 		if len(pgrep_res['stdout']) == 0:
 			break
+
+		ctx.log("killall_and_wait: still waiting on '{}'".format(name))
 		time.sleep(1)
 
 class Process:

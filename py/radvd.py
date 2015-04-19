@@ -30,7 +30,7 @@ class Radvd(router_module.RouterModule):
 
 
 	def brutal_stop(self):
-		process.shell_command(self.ctx, "killall radvd", ignoreResult=True)
+		process.killall_and_wait(self.get_context(), "radvd")
 
 	def start(self):
 		radvd = process.Process(

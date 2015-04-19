@@ -34,7 +34,8 @@ class Dhcp6Client(router_module.RouterModule):
 		process.shell_command(self.get_context(), "killall dhcp6c", ignoreResult=True)
 
 	def is_interface_up(self, iface):
-		if process.shell_command(self.get_context(), "ip addr show dev eth0 | grep ,UP,", ignoreResult=True)['returncode'] == 0:
+		ret = process.shell_command(self.get_context(), "ip addr show dev {0} | grep '[<,]UP[,>]'".format(iface), ignoreResult=True)
+		if ret['returncode'] == 0:
 			return True
 		else:
 			return False
