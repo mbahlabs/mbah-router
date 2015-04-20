@@ -29,20 +29,15 @@ def both_iptables(ctx, s):
 	iptables(ctx, s)
 	ip6tables(ctx, s)
 
-def wait_for_ip6_addr():
+def wait_for_ip6_addr(ctx, iface):
 	now = time.time()
 
 	while 1:
-		p = subprocess.Popen("ip -6 addr show dev $if scope global | wc -l",
-			shell=True,
-			stdout=subprocess.PIPE,
-			stderr=subprocess.PIPE)
-		(stdout, stderr) = p.communicate()
+		res = process.shell_command(ctx, "ip -6 addr show dev {0} scope global | wc -l".format(iface), ignoreResult=True)
+		if res['returncode'] != 0:
+			ctx.log("failed to determine if we have an ipv6 address")
 
-		if p.returncode != 0:
-			raise RuntimeError("failed to determine if we have an ipv6 address")
-
-		if stdout != "0":
+		if res['stdout'] != "0":
 			return True
 
 		if time.time() > now + 10:
@@ -179,7 +174,7 @@ def inner_main(ctx):
 	# Enable IPv6 routing
 	process.shell_command(ctx, 'echo 1 >/proc/sys/net/ipv6/conf/all/forwarding')
 
-	if wait_for_ip6_addr() == True:
+	if wait_for_ip6_addr(ctx, conf['wan_if']) == True:
 		# We have an ipv6 address; set up the associated services
 		radv = radvd.Radvd(ctx)
 		ctx.add_module(radv)
